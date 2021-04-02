@@ -1,3 +1,9 @@
+// nefariously adapted from https://github.com/jackaudio/example-clients/blob/master/simple_client.c
+// to support various of CC's projects
+// this one's useful for counting xruns
+// run from src/ directory with
+// ../build-logxruns-Desktop-Release/logxruns
+
 #include <QCoreApplication>
 #include <QDebug>
 #include <QLoggingCategory>
@@ -15,40 +21,45 @@ jack_port_t *output_port;
 using std::cout;
 using std::endl;
 
+double srate;
+uint32_t FPP;
+double PPS;
 int xctr;
-int ctr;
+int pctr;
 jack_client_t *client;
 
-// Jack XRUN callback function, called
+// Jack xrun callback function, called
 // whenever there is a xrun.
-static int qjackctl_xrun_callback ( void * )
+static int xrun_callback ( void * )
 {
-//    qDebug() << "hi";
-//    std::cout << ".";
-//    fprintf(stderr,".");
     xctr++;
     return 0;
 }
+
+// report xrun info
 void report()
 {
-    double PPS = 48000/32.0;
-    double tmp = (ctr/PPS);
-float fDspLoad = jack_cpu_load(client);
-qDebug() << xctr << "\t(" << (int)(tmp) << ")" << "\t(" << (xctr/tmp) << ")" << "\t" << fDspLoad;
+    double tmp = (pctr/(double)PPS);
+    float fDspLoad = jack_cpu_load(client);
+    qDebug() << xctr << "\t(" << (int)(tmp) << ")" << "\t(" << (xctr/tmp) << ")" << "\t" << fDspLoad;
 }
 
 int
 process (jack_nframes_t nframes, void *arg)
 {
-//    jack_default_audio_sample_t *in, *out;
+    //    jack_default_audio_sample_t *in, *out;
 
-//    in = (jack_default_audio_sample_t *)jack_port_get_buffer (input_port, nframes);
-//    out =(jack_default_audio_sample_t *) jack_port_get_buffer (output_port, nframes);
-//    memcpy (out, in,
-//        sizeof (jack_default_audio_sample_t) * nframes);
-ctr++;
-//qDebug() << ctr;
-if (!(ctr%2000)) { report(); }
+    //    in = (jack_default_audio_sample_t *)jack_port_get_buffer (input_port, nframes);
+    //    out =(jack_default_audio_sample_t *) jack_port_get_buffer (output_port, nframes);
+    //    memcpy (out, in,
+    //        sizeof (jack_default_audio_sample_t) * nframes);
+    if (!pctr) {
+        qDebug() << "xruns" << "(" << "secs" << ")" << "(" << "avg xruns" << ")" << "" << "DspLoad";
+    }
+    pctr++;
+    //qDebug() << ctr;
+    int lazyReportInterval = 2*PPS; // secs
+    if (!(pctr%lazyReportInterval)) { report(); }
     return 0;
 }
 
@@ -70,8 +81,8 @@ int main(int argc, char *argv[])
     QCoreApplication a(argc, argv);
     QLoggingCategory::setFilterRules(QStringLiteral("*.debug=true"));
     qInstallMessageHandler(myMessageOutput);
-//    int
-//    main (int argc, char *argv[])
+    //    int
+    //    main (int argc, char *argv[])
     {
         const char **ports;
         const char *client_name = "simple";
@@ -79,30 +90,30 @@ int main(int argc, char *argv[])
         jack_options_t options = JackNullOption;
         jack_status_t status;
 
-        ctr=0;
+        pctr=0;
         xctr=0;
-
         client = jack_client_open (client_name, options, &status, server_name);
         if (client == NULL) {
             fprintf (stderr, "jack_client_open() failed, "
-                 "status = 0x%2.0x\n", status);
+                             "status = 0x%2.0x\n", status);
             if (status & JackServerFailed) {
                 fprintf (stderr, "Unable to connect to JACK server\n");
             }
             exit (1);
         }
-        qDebug() << "simple";
-        fprintf (stderr, "JACK server started\n");
+        srate = jack_get_sample_rate (client);
+        FPP = jack_get_buffer_size(client);
+        PPS = srate/FPP;
+        qDebug() << "srate = " << srate << "FPP = " << FPP;
         if (status & JackServerStarted) {
-            fprintf (stderr, "JACK server started\n");
+            qDebug() << "JACK server started";
         }
         if (status & JackNameNotUnique) {
             client_name = jack_get_client_name(client);
             fprintf (stderr, "unique name `%s' assigned\n", client_name);
         }
 
-        jack_set_xrun_callback(client,
-            qjackctl_xrun_callback, 0);
+        jack_set_xrun_callback(client,xrun_callback, 0);
 
         /* tell the JACK server to call `process()' whenever
            there is work to be done.
@@ -121,16 +132,16 @@ int main(int argc, char *argv[])
          */
 
         fprintf (stderr,"engine sample rate: %" PRIu32 "\n",
-            jack_get_sample_rate (client));
+                 jack_get_sample_rate (client));
 
         /* create two ports */
 
         input_port = jack_port_register (client, "input",
-                         JACK_DEFAULT_AUDIO_TYPE,
-                         JackPortIsInput, 0);
+                                         JACK_DEFAULT_AUDIO_TYPE,
+                                         JackPortIsInput, 0);
         output_port = jack_port_register (client, "output",
-                          JACK_DEFAULT_AUDIO_TYPE,
-                          JackPortIsOutput, 0);
+                                          JACK_DEFAULT_AUDIO_TYPE,
+                                          JackPortIsOutput, 0);
 
         if ((input_port == NULL) || (output_port == NULL)) {
             fprintf(stderr, "no more JACK ports available\n");
@@ -144,7 +155,7 @@ int main(int argc, char *argv[])
             fprintf (stderr, "cannot activate client");
             exit (1);
         }
-        qDebug() << "activated";
+        //        qDebug() << "activated";
 
         /* Connect the ports.  You can't do this before the client is
          * activated, because we can't make connections to clients
@@ -154,43 +165,43 @@ int main(int argc, char *argv[])
          * it.
          */
 
-//        ports = jack_get_ports (client, NULL, NULL,
-//                    JackPortIsPhysical|JackPortIsOutput);
-//        if (ports == NULL) {
-//            fprintf(stderr, "no physical capture ports\n");
-//            exit (1);
-//        }
+        //        ports = jack_get_ports (client, NULL, NULL,
+        //                    JackPortIsPhysical|JackPortIsOutput);
+        //        if (ports == NULL) {
+        //            fprintf(stderr, "no physical capture ports\n");
+        //            exit (1);
+        //        }
 
-//        if (jack_connect (client, ports[0], jack_port_name (input_port))) {
-//            fprintf (stderr, "cannot connect input ports\n");
-//        }
+        //        if (jack_connect (client, ports[0], jack_port_name (input_port))) {
+        //            fprintf (stderr, "cannot connect input ports\n");
+        //        }
 
-//        free (ports);
+        //        free (ports);
 
-//        ports = jack_get_ports (client, NULL, NULL,
-//                    JackPortIsPhysical|JackPortIsInput);
-//        if (ports == NULL) {
-//            fprintf(stderr, "no physical playback ports\n");
-//            exit (1);
-//        }
+        //        ports = jack_get_ports (client, NULL, NULL,
+        //                    JackPortIsPhysical|JackPortIsInput);
+        //        if (ports == NULL) {
+        //            fprintf(stderr, "no physical playback ports\n");
+        //            exit (1);
+        //        }
 
-//        if (jack_connect (client, jack_port_name (output_port), ports[0])) {
-//            fprintf (stderr, "cannot connect output ports\n");
-//        }
+        //        if (jack_connect (client, jack_port_name (output_port), ports[0])) {
+        //            fprintf (stderr, "cannot connect output ports\n");
+        //        }
 
-//        free (ports);
+        //        free (ports);
 
         /* keep running until stopped by the user */
 
-//        sleep (-1);
+        //        sleep (-1);
 
         /* this is never reached but if the program
            had some other way to exit besides being killed,
            they would be important to call.
         */
 
-//        jack_client_close (client);
-//        exit (0);
+        //        jack_client_close (client);
+        //        exit (0);
     }
 
     return a.exec();
