@@ -25,6 +25,8 @@ double srate;
 uint32_t FPP;
 double PPS;
 int xctr;
+int cctr;
+int dctr;
 int pctr;
 jack_client_t *client;
 
@@ -44,9 +46,19 @@ void report()
     qDebug() << xctr << "\t(" << (int)(tmp) << ")" << "\t(" << (xctr/tmp) << ")" << "\t" << fDspLoad;
 }
 
+// report xrun info
+void dummy()
+{
+//    fprintf(stderr, "\n");
+    dctr++;
+}
+
 int
 process (jack_nframes_t nframes, void *arg)
 {
+//    fprintf(stderr, ".");
+    cctr++;
+    dummy();
     //    jack_default_audio_sample_t *in, *out;
 
     //    in = (jack_default_audio_sample_t *)jack_port_get_buffer (input_port, nframes);
@@ -59,7 +71,11 @@ process (jack_nframes_t nframes, void *arg)
     pctr++;
     //qDebug() << ctr;
     int lazyReportInterval = 2*PPS; // secs
-    if (!(pctr%lazyReportInterval)) { report(); }
+    if (!(pctr%lazyReportInterval)) {
+        if (cctr != dctr) qDebug() << "cctr" << "(" << cctr << ")" << "dctr" << "(" << dctr << ")";
+        cctr=0;
+        dctr=0;
+    }
     return 0;
 }
 
@@ -92,6 +108,8 @@ int main(int argc, char *argv[])
 
         pctr=0;
         xctr=0;
+        cctr=0;
+        dctr=0;
         client = jack_client_open (client_name, options, &status, server_name);
         if (client == NULL) {
             fprintf (stderr, "jack_client_open() failed, "
