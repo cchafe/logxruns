@@ -17,7 +17,7 @@
 jack_port_t *input_port;
 jack_port_t *output_port;
 #include <iostream>
-
+#include <qelapsedtimer.h>
 using std::cout;
 using std::endl;
 
@@ -29,6 +29,8 @@ int cctr;
 int dctr;
 int pctr;
 jack_client_t *client;
+QElapsedTimer mTimer;
+double elapsed;
 
 // Jack xrun callback function, called
 // whenever there is a xrun.
@@ -49,14 +51,14 @@ void report()
 // report xrun info
 void dummy()
 {
-//    fprintf(stderr, "\n");
+    //    fprintf(stderr, "\n");
     dctr++;
 }
 
 int
 process (jack_nframes_t nframes, void *arg)
 {
-//    fprintf(stderr, ".");
+    //    fprintf(stderr, ".");
     cctr++;
     dummy();
     //    jack_default_audio_sample_t *in, *out;
@@ -65,6 +67,13 @@ process (jack_nframes_t nframes, void *arg)
     //    out =(jack_default_audio_sample_t *) jack_port_get_buffer (output_port, nframes);
     //    memcpy (out, in,
     //        sizeof (jack_default_audio_sample_t) * nframes);
+    if (!pctr) elapsed = 0.0;
+    else {
+        elapsed = (double)mTimer.nsecsElapsed() / 1000000.0;
+        //    qDebug() << (double)mTimer.nsecsElapsed() / 1000000.0;
+        fprintf(stdout,"%f\n",elapsed); // > /tmp/xxx.dat // tail -n +18 xxx.dat | head -n -11 > xx.dat
+        mTimer.start();
+    }
     if (!pctr) {
         qDebug() << "xruns" << "(" << "secs" << ")" << "(" << "avg xruns" << ")" << "" << "DspLoad";
     }
